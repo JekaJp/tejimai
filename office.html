@@ -232,73 +232,85 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
 });
 
-// ===== APP =====
-const DB = {
-  kinoki:[
-    {id:1,date:'3月5日',name:'田代',time:'17:45',entries:[
-      {no:'SX3-281',yama:250,ryohin:{ko:7,mai:113},damage:{ko:0,mai:0},shimi:{ko:0,mai:0},senbetsu:{ko:0,mai:0},fusoku:0,biko:{size:'5.5',t:'1',g:'1',f:'4',memo:''}},
-      {no:'SL3-830',yama:0,ryohin:{ko:27,mai:140},damage:{ko:0,mai:10},shimi:{ko:0,mai:0},senbetsu:{ko:0,mai:0},fusoku:0,biko:{size:'9',t:'1',g:'2',f:'4',memo:''}},
-      {no:'SH3-449',yama:0,ryohin:{ko:19,mai:98},damage:{ko:0,mai:6},shimi:{ko:0,mai:0},senbetsu:{ko:0,mai:0},fusoku:0,biko:{size:'12',t:'2',g:'2',f:'4',memo:''}},
-    ]},
-    {id:2,date:'3月5日',name:'鈴木',time:'17:30',entries:[
-      {no:'SX3-102',yama:180,ryohin:{ko:5,mai:200},damage:{ko:0,mai:15},shimi:{ko:0,mai:5},senbetsu:{ko:0,mai:0},fusoku:3,biko:{size:'5.5',t:'2',g:'1',f:'3',memo:''}},
-      {no:'SL3-205',yama:0,ryohin:{ko:12,mai:88},damage:{ko:0,mai:0},shimi:{ko:0,mai:12},senbetsu:{ko:0,mai:4},fusoku:0,biko:{size:'9',t:'1',g:'1',f:'2',memo:''}},
-    ]},
-    {id:3,date:'3月4日',name:'田代',time:'17:50',entries:[
-      {no:'SX3-190',yama:200,ryohin:{ko:10,mai:120},damage:{ko:0,mai:8},shimi:{ko:0,mai:0},senbetsu:{ko:0,mai:0},fusoku:0,biko:{size:'5.5',t:'1',g:'2',f:'3',memo:''}},
-      {no:'SL3-277',yama:0,ryohin:{ko:6,mai:90},damage:{ko:0,mai:4},shimi:{ko:0,mai:6},senbetsu:{ko:0,mai:2},fusoku:2,biko:{size:'9',t:'2',g:'1',f:'4',memo:''}},
-    ]},
-  ],
-  daini:[
-    {id:101,date:'3月5日',name:'山田',time:'17:55',entries:[
-      {no:'SX3-501',yama:180,ryohin:{ko:8,mai:95},damage:{ko:0,mai:5},shimi:{ko:0,mai:0},senbetsu:{ko:0,mai:0},fusoku:0,biko:{size:'5.5',t:'1',g:'2',f:'3',memo:''}},
-      {no:'SL3-622',yama:0,ryohin:{ko:14,mai:120},damage:{ko:0,mai:8},shimi:{ko:0,mai:2},senbetsu:{ko:0,mai:0},fusoku:3,biko:{size:'9',t:'2',g:'1',f:'4',memo:''}},
-    ]},
-    {id:102,date:'3月5日',name:'中村',time:'18:10',entries:[
-      {no:'SH3-733',yama:220,ryohin:{ko:11,mai:145},damage:{ko:0,mai:12},shimi:{ko:0,mai:0},senbetsu:{ko:0,mai:6},fusoku:0,biko:{size:'12',t:'1',g:'1',f:'2',memo:'要確認'}},
-    ]},
-  ]
-};
+// ===== SUPABASE =====
+const SB_URL = 'https://iffoirsptormcutghzxx.supabase.co';
+const SB_KEY = 'sb_publishable_7qGblCk5hUK_n8xpFM1KJA_sLbIWGXq';
 
-let currentBase='kinoki',activeId=null;
+let allReports = [];
+let currentBase='kinoki', activeId=null;
+
+async function fetchReports(){
+  try{
+    const res = await fetch(`${SB_URL}/rest/v1/reports?order=id.desc&limit=200`,{
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+    });
+    const data = await res.json();
+    if(Array.isArray(data)){
+      allReports = data.map(r=>({
+        id: r.id,
+        date: r.date,
+        name: r.name,
+        time: r.ts ? r.ts.slice(0,16).replace('T',' ') : '',
+        entries: Array.isArray(r.entries) ? r.entries : [],
+        text: r.text||''
+      }));
+      refreshList();
+    }
+  }catch(e){console.warn('fetch error',e);}
+}
 
 function initApp(){
   const now=new Date();
   document.getElementById('todayDate').textContent=`${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日`;
+  fetchReports();
+  setInterval(fetchReports, 30000);
   switchBase('kinoki');
+}
+
+function refreshList(){
+  document.getElementById('btn-kinoki').classList.toggle('active',currentBase==='kinoki');
+  document.getElementById('btn-daini').classList.toggle('active',currentBase==='daini');
+  const sel=document.getElementById('sd');
+  const prevDate=sel.value;
+  sel.innerHTML='<option value="">全日付</option>';
+  [...new Set(allReports.map(r=>r.date))].forEach(d=>{
+    const o=document.createElement('option');o.value=d;o.textContent=d;
+    if(d===prevDate)o.selected=true;
+    sel.appendChild(o);
+  });
+  doFilter();
 }
 
 function switchBase(base){
   currentBase=base;activeId=null;
   document.getElementById('btn-kinoki').classList.toggle('active',base==='kinoki');
   document.getElementById('btn-daini').classList.toggle('active',base==='daini');
-  document.getElementById('baseTitle').textContent=(base==='kinoki'?'金木':'第二')+'　手仕舞い報告　受信一覧';
-  const sel=document.getElementById('sd');
-  sel.innerHTML='<option value="">全日付</option>';
-  [...new Set(DB[base].map(r=>r.date))].forEach(d=>{const o=document.createElement('option');o.value=d;o.textContent=d;sel.appendChild(o);});
-  document.getElementById('sq').value='';
+  document.getElementById('baseTitle').textContent='手仕舞い報告　受信一覧';
   document.getElementById('rightPanel').innerHTML=`<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">左のリストから報告を選択してください</div></div>`;
-  renderList(DB[base]);
+  doFilter();
 }
 
 function doFilter(){
   const q=document.getElementById('sq').value.toLowerCase();
   const d=document.getElementById('sd').value;
-  const filtered=DB[currentBase].filter(r=>(!d||r.date===d)&&(!q||r.name.toLowerCase().includes(q)||r.entries.some(e=>e.no.toLowerCase().includes(q))));
+  const filtered=allReports.filter(r=>(!d||r.date===d)&&(!q||r.name.toLowerCase().includes(q)||r.entries.some(e=>e.no&&e.no.toLowerCase().includes(q))));
   renderList(filtered);
 }
 
 function renderList(data){
   const wrap=document.getElementById('listWrap');wrap.innerHTML='';
   document.getElementById('cnt').textContent=data.length+'件';
-  if(!data.length){wrap.innerHTML=`<div style="padding:36px;text-align:center;color:var(--muted);font-size:13px;">該当なし</div>`;return;}
+  if(!data.length){
+    wrap.innerHTML=`<div style="padding:36px;text-align:center;color:var(--muted);font-size:13px;">報告はありません</div>`;
+    return;
+  }
   const groups={};data.forEach(r=>(groups[r.date]||(groups[r.date]=[])).push(r));
   Object.keys(groups).forEach(date=>{
     const lbl=document.createElement('div');lbl.className='dlabel';lbl.textContent='📅 '+date;wrap.appendChild(lbl);
     groups[date].forEach(rep=>{
       const row=document.createElement('div');
       row.className='rrow'+(rep.id===activeId?' active':'');row.id='row'+rep.id;
-      row.innerHTML=`<div class="avatar">${rep.name[0]}</div><div class="rinfo"><div class="rname">${rep.name}</div><div class="rids">${rep.entries.map(e=>e.no).join('　')}</div><div class="rtime">${rep.time}　${rep.entries.length}件</div></div><div class="rbadge">受信済</div>`;
+      row.innerHTML=`<div class="avatar">${rep.name?rep.name[0]:'?'}</div><div class="rinfo"><div class="rname">${rep.name}</div><div class="rids">${rep.entries.map(e=>e.no).join('　')}</div><div class="rtime">${rep.time}　${rep.entries.length}件</div></div><div class="rbadge">受信済</div>`;
       row.onclick=()=>openReport(rep.id);wrap.appendChild(row);
     });
   });
@@ -308,7 +320,7 @@ function openReport(id){
   activeId=id;
   document.querySelectorAll('.rrow').forEach(r=>r.classList.remove('active'));
   const row=document.getElementById('row'+id);if(row)row.classList.add('active');
-  const rep=DB[currentBase].find(r=>r.id===id);if(!rep)return;
+  const rep=allReports.find(r=>r.id===id);if(!rep)return;
   document.getElementById('rightPanel').innerHTML=`
     <div class="dheader">
       <div><div class="dtitle">${rep.name}<span style="font-size:15px;color:var(--muted);font-weight:500;font-family:'Share Tech Mono',monospace;margin-left:10px;">${rep.date}</span></div>

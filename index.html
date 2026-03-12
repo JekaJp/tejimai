@@ -269,6 +269,19 @@ const EMAILJS_SERVICE_ID  = 'service_wdbyd8m';
 const EMAILJS_TEMPLATE_ID = 'template_3dpphtg';
 const REPORT_TO_EMAIL     = 'epishko.jp@gmail.com';
 
+// ===== SUPABASE =====
+const SB_URL = 'https://iffoirsptormcutghzxx.supabase.co';
+const SB_KEY = 'sb_publishable_7qGblCk5hUK_n8xpFM1KJA_sLbIWGXq';
+async function sbSave(rep){
+  try{
+    await fetch(`${SB_URL}/rest/v1/reports`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'},
+      body:JSON.stringify({date:rep.date,name:rep.name,entries:rep.entries,ts:rep.ts,text:buildText(rep)})
+    });
+  }catch(e){console.warn('Supabase save failed',e);}
+}
+
 // ===== USERS (for test) =====
 // email: password
 const USERS = {
@@ -495,6 +508,7 @@ async function sendReport(){
       report_date:rep.date,staff_name:rep.name,send_time:rep.ts,
       entry_count:rep.entries.length+'件',report_body:buildText(rep),
     });
+    await sbSave(rep);
     history.unshift(rep);if(history.length>100)history.pop();
     localStorage.setItem('tj_hist',JSON.stringify(history));
     dayList=[];persist();updBadge();
