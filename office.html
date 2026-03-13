@@ -58,9 +58,6 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
 .hdr-left .ttl{font-size:18px;font-weight:900;letter-spacing:.04em;}
 .hdr-right{display:flex;align-items:center;gap:12px;}
 .hdate{font-family:'Share Tech Mono',monospace;font-size:13px;opacity:.75;}
-.base-sw{display:flex;background:rgba(255,255,255,.15);border-radius:8px;overflow:hidden;}
-.bsw-btn{padding:7px 20px;border:none;cursor:pointer;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;color:rgba(255,255,255,.55);background:transparent;transition:all .15s;}
-.bsw-btn.active{background:rgba(255,255,255,.25);color:#fff;}
 .btn-excel{background:var(--success);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;cursor:pointer;}
 .btn-logout{background:rgba(255,255,255,.15);color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.25);border-radius:7px;padding:7px 14px;font-family:'Noto Sans JP',sans-serif;font-size:12px;font-weight:700;cursor:pointer;}
 .layout{display:flex;height:calc(100vh - 52px);}
@@ -98,6 +95,25 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
 .eline:last-child{border-bottom:none;}
 .eline-id{font-family:'Share Tech Mono',monospace;font-size:16px;font-weight:700;color:var(--accent);letter-spacing:.08em;white-space:nowrap;flex-shrink:0;}
 .eline-text{font-size:13px;color:var(--text);line-height:1.5;}
+
+@media print {
+  #loginScreen,
+  .hdr,
+  .btn-print,
+  .dheader .btn-print{display:none!important;}
+  .left{display:none!important;}
+  .layout{display:block!important;height:auto!important;}
+  .right{padding:20px 28px!important;overflow:visible!important;gap:10px!important;}
+  .dheader{margin-bottom:8px!important;}
+  .dtitle{font-size:20px!important;}
+  .dmeta{display:none!important;}
+  .entries-wrap{box-shadow:none!important;border:none!important;border-radius:0!important;}
+  .eline{padding:6px 0!important;border-bottom:0.5px solid #eee!important;break-inside:avoid;}
+  .eline:last-child{border-bottom:none!important;}
+  .eline-id{font-size:14px!important;}
+  .eline-text{font-size:13px!important;}
+  body{background:#fff!important;}
+}
 </style>
 </head>
 <body>
@@ -141,15 +157,11 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
 <div class="hdr">
   <div class="hdr-left">
     <div class="co">管理画面</div>
-    <div class="ttl" id="baseTitle">金木　手仕舞い報告　受信一覧</div>
+    <div class="ttl">手仕舞い報告　受信一覧</div>
   </div>
   <div class="hdr-right">
     <span class="hdate" id="todayDate"></span>
-    <div class="base-sw">
-      <button class="bsw-btn active" id="btn-kinoki" onclick="switchBase('kinoki')">金木</button>
-      <button class="bsw-btn" id="btn-daini" onclick="switchBase('daini')">第二</button>
-    </div>
-    <button class="btn-excel">📥 Excelで保存</button>
+<button class="btn-excel" onclick="exportExcel()">📥 Excelで保存</button>
     <button class="btn-logout" onclick="doLogout()">ログアウト</button>
   </div>
 </div>
@@ -162,7 +174,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
         <span class="cnt" id="cnt">0件</span>
       </div>
       <div class="srow">
-        <input class="sinput" type="text" id="sq" placeholder="名前・入庫NOで検索" oninput="doFilter()">
+        <input class="sinput" type="text" id="sq" placeholder="入庫NOで検索" oninput="doFilter()">
         <select class="sselect" id="sd" onchange="doFilter()">
           <option value="">全日付</option>
         </select>
@@ -179,6 +191,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
 </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // ===== USERS =====
 const USERS = {
@@ -237,11 +250,11 @@ const SB_URL = 'https://iffoirsptormcutghzxx.supabase.co';
 const SB_KEY = 'sb_publishable_7qGblCk5hUK_n8xpFM1KJA_sLbIWGXq';
 
 let allReports = [];
-let currentBase='kinoki', activeId=null;
+let activeKey = null; // "date__name"
 
 async function fetchReports(){
   try{
-    const res = await fetch(`${SB_URL}/rest/v1/reports?order=id.desc&limit=200`,{
+    const res = await fetch(`${SB_URL}/rest/v1/reports?order=id.asc&limit=500`,{
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
     });
     const data = await res.json();
@@ -252,7 +265,6 @@ async function fetchReports(){
         name: r.name,
         time: r.ts ? r.ts.slice(0,16).replace('T',' ') : '',
         entries: Array.isArray(r.entries) ? r.entries : [],
-        text: r.text||''
       }));
       refreshList();
     }
@@ -264,16 +276,16 @@ function initApp(){
   document.getElementById('todayDate').textContent=`${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日`;
   fetchReports();
   setInterval(fetchReports, 30000);
-  switchBase('kinoki');
 }
 
 function refreshList(){
-  document.getElementById('btn-kinoki').classList.toggle('active',currentBase==='kinoki');
-  document.getElementById('btn-daini').classList.toggle('active',currentBase==='daini');
+  // Update date filter options
   const sel=document.getElementById('sd');
   const prevDate=sel.value;
+  // Collect unique dates sorted newest first
+  const dates=[...new Set(allReports.map(r=>r.date))].reverse();
   sel.innerHTML='<option value="">全日付</option>';
-  [...new Set(allReports.map(r=>r.date))].forEach(d=>{
+  dates.forEach(d=>{
     const o=document.createElement('option');o.value=d;o.textContent=d;
     if(d===prevDate)o.selected=true;
     sel.appendChild(o);
@@ -281,53 +293,182 @@ function refreshList(){
   doFilter();
 }
 
-function switchBase(base){
-  currentBase=base;activeId=null;
-  document.getElementById('btn-kinoki').classList.toggle('active',base==='kinoki');
-  document.getElementById('btn-daini').classList.toggle('active',base==='daini');
-  document.getElementById('baseTitle').textContent='手仕舞い報告　受信一覧';
-  document.getElementById('rightPanel').innerHTML=`<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">左のリストから報告を選択してください</div></div>`;
-  doFilter();
-}
-
 function doFilter(){
   const q=document.getElementById('sq').value.toLowerCase();
   const d=document.getElementById('sd').value;
-  const filtered=allReports.filter(r=>(!d||r.date===d)&&(!q||r.name.toLowerCase().includes(q)||r.entries.some(e=>e.no&&e.no.toLowerCase().includes(q))));
+  const filtered=allReports.filter(r=>
+    (!d||r.date===d)&&
+    (!q||r.entries.some(e=>e.no&&e.no.toLowerCase().includes(q)))
+  );
   renderList(filtered);
 }
 
+// Group by date (newest first) → then by name → show as one row per person per day
 function renderList(data){
-  const wrap=document.getElementById('listWrap');wrap.innerHTML='';
-  document.getElementById('cnt').textContent=data.length+'件';
+  const wrap=document.getElementById('listWrap');
+  wrap.innerHTML='';
+
   if(!data.length){
     wrap.innerHTML=`<div style="padding:36px;text-align:center;color:var(--muted);font-size:13px;">報告はありません</div>`;
+    document.getElementById('cnt').textContent='0件';
     return;
   }
-  const groups={};data.forEach(r=>(groups[r.date]||(groups[r.date]=[])).push(r));
-  Object.keys(groups).forEach(date=>{
-    const lbl=document.createElement('div');lbl.className='dlabel';lbl.textContent='📅 '+date;wrap.appendChild(lbl);
-    groups[date].forEach(rep=>{
+
+  // Group by date
+  const dateMap={};
+  data.forEach(r=>{
+    if(!dateMap[r.date]) dateMap[r.date]=[];
+    dateMap[r.date].push(r);
+  });
+
+  // Sort dates newest first
+  // Sort dates newest first — parse Japanese date like "3月13日" or use id order
+  const sortedDates=Object.keys(dateMap).sort((a,b)=>{
+    // Try to extract month/day numbers for comparison
+    const pa=a.match(/(\d+)月(\d+)日/), pb=b.match(/(\d+)月(\d+)日/);
+    if(pa&&pb){
+      const ma=parseInt(pa[1]),da=parseInt(pa[2]),mb=parseInt(pb[1]),db=parseInt(pb[2]);
+      return mb!==ma ? mb-ma : db-da;
+    }
+    return b.localeCompare(a);
+  });
+  let totalStacks=0;
+
+  sortedDates.forEach(date=>{
+    const reps=dateMap[date];
+
+    // Group by name within this date
+    const nameMap={};
+    reps.forEach(r=>{
+      if(!nameMap[r.name]) nameMap[r.name]=[];
+      nameMap[r.name].push(r);
+    });
+
+    const lbl=document.createElement('div');
+    lbl.className='dlabel';
+    lbl.textContent='📅 '+date;
+    wrap.appendChild(lbl);
+
+    Object.keys(nameMap).forEach(name=>{
+      const stack=nameMap[name]; // all reports by this person on this date
+      const key=date+'__'+name;
+      totalStacks++;
+
+      // Collect all entries and all IDs across all reports
+      const allEntries=stack.flatMap(r=>r.entries);
+      const allNos=allEntries.map(e=>e.no).filter(Boolean);
+      // First send time (oldest first since order=id.asc)
+      const firstTime=stack[0].time;
+      const lastTime=stack[stack.length-1].time;
+      const timeStr=stack.length>1?`${firstTime} 〜 ${lastTime}`:firstTime;
+
       const row=document.createElement('div');
-      row.className='rrow'+(rep.id===activeId?' active':'');row.id='row'+rep.id;
-      row.innerHTML=`<div class="avatar">${rep.name?rep.name[0]:'?'}</div><div class="rinfo"><div class="rname">${rep.name}</div><div class="rids">${rep.entries.map(e=>e.no).join('　')}</div><div class="rtime">${rep.time}　${rep.entries.length}件</div></div><div class="rbadge">受信済</div>`;
-      row.onclick=()=>openReport(rep.id);wrap.appendChild(row);
+      row.className='rrow'+(key===activeKey?' active':'');
+      row.id='stack-'+key.replace(/[^a-zA-Z0-9]/g,'_');
+      row.innerHTML=`
+        <div class="avatar">${name?name[0]:'?'}</div>
+        <div class="rinfo">
+          <div class="rname">${name}</div>
+          <div class="rids">${allNos.join('　')||'—'}</div>
+          <div class="rtime">${timeStr}　${allEntries.length}件</div>
+        </div>
+        <div class="rbadge">受信済</div>`;
+      row.onclick=()=>openStack(key, date, name, stack);
+      wrap.appendChild(row);
     });
   });
+
+  document.getElementById('cnt').textContent=totalStacks+'件';
 }
 
-function openReport(id){
-  activeId=id;
+function openStack(key, date, name, stack){
+  activeKey=key;
   document.querySelectorAll('.rrow').forEach(r=>r.classList.remove('active'));
-  const row=document.getElementById('row'+id);if(row)row.classList.add('active');
-  const rep=allReports.find(r=>r.id===id);if(!rep)return;
+  const rowEl=document.getElementById('stack-'+key.replace(/[^a-zA-Z0-9]/g,'_'));
+  if(rowEl) rowEl.classList.add('active');
+
+  // Show all reports oldest→newest on right panel
+  const allEntries=stack.flatMap(r=>r.entries);
+  const firstTime=stack[0].time;
+  const lastTime=stack[stack.length-1].time;
+  const timeStr=stack.length>1?`${firstTime} 〜 ${lastTime}`:firstTime;
+
   document.getElementById('rightPanel').innerHTML=`
     <div class="dheader">
-      <div><div class="dtitle">${rep.name}<span style="font-size:15px;color:var(--muted);font-weight:500;font-family:'Share Tech Mono',monospace;margin-left:10px;">${rep.date}</span></div>
-      <div class="dmeta">送信時刻：${rep.time}　／　${rep.entries.length}件の入庫</div></div>
+      <div>
+        <div class="dtitle">${name}<span style="font-size:15px;color:var(--muted);font-weight:500;font-family:'Share Tech Mono',monospace;margin-left:10px;">${date}</span></div>
+        <div class="dmeta">受信時刻：${timeStr}　／　全${allEntries.length}件　（${stack.length}回送信）</div>
+      </div>
       <button class="btn-print" onclick="window.print()">🖨 印刷</button>
     </div>
-    <div class="entries-wrap">${rep.entries.map(e=>buildLine(e)).join('')}</div>`;
+    <div class="entries-wrap">${allEntries.map(e=>buildLine(e)).join('')}</div>`;
+}
+
+function exportExcel(){
+  const d = document.getElementById('sd').value;
+  const q = document.getElementById('sq').value.toLowerCase();
+  const filtered = allReports.filter(r=>
+    (!d||r.date===d) &&
+    (!q||r.entries.some(e=>e.no&&e.no.toLowerCase().includes(q)))
+  );
+
+  if(!filtered.length){ alert('データがありません'); return; }
+
+  const n = v => (+v||0) || '';
+
+  // Header rows
+  const header1 = ['金木　手仕舞い報告'];
+  const header2 = [
+    '入庫NO.', '山積済',
+    '良品_個', '良品_枚',
+    'ダメージ_個', 'ダメージ_枚',
+    'シミ_個', 'シミ_枚',
+    '選別なし_個', '選別なし_枚',
+    '不足(枚)',
+    'サイズ(mm)', 'T', 'G', 'F', 'メモ',
+    '名前', '日付', '送信時刻'
+  ];
+
+  const rows = [header2];
+
+  // Sort by date asc, then time asc
+  const sorted = [...filtered].sort((a,b)=> a.id - b.id);
+
+  sorted.forEach(rep => {
+    rep.entries.forEach(e => {
+      rows.push([
+        e.no || '',
+        n(e.yama),
+        n(e.ryohin?.ko), n(e.ryohin?.mai),
+        n(e.damage?.ko),  n(e.damage?.mai),
+        n(e.shimi?.ko),   n(e.shimi?.mai),
+        n(e.senbetsu?.ko),n(e.senbetsu?.mai),
+        n(e.fusoku),
+        e.biko?.size || '', e.biko?.t || '', e.biko?.g || '', e.biko?.f || '', e.biko?.memo || '',
+        rep.name, rep.date, rep.time
+      ]);
+    });
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Column widths
+  ws['!cols'] = [
+    {wch:12},{wch:8},
+    {wch:8},{wch:8},
+    {wch:10},{wch:10},
+    {wch:8},{wch:8},
+    {wch:10},{wch:10},
+    {wch:8},
+    {wch:10},{wch:5},{wch:5},{wch:5},{wch:16},
+    {wch:12},{wch:10},{wch:18}
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '手仕舞い報告');
+
+  const filename = d ? `手仕舞い報告_${d}.xlsx` : `手仕舞い報告_全件.xlsx`;
+  XLSX.writeFile(wb, filename);
 }
 
 function buildLine(e){

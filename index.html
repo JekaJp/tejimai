@@ -124,13 +124,12 @@ input.cid{font-family:'Share Tech Mono',monospace;font-size:24px;letter-spacing:
 .hgroup{display:flex;flex-direction:column;gap:8px;}
 .hgroup-lbl{font-size:11px;font-weight:900;color:var(--muted);letter-spacing:.1em;padding:4px 2px;}
 .hrep{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;}
-.hrep-head{padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;}
+.hrep-head{padding:12px 14px;display:flex;justify-content:space-between;align-items:center;user-select:none;}
 .hrep-title{font-size:15px;font-weight:700;color:var(--text);}
 .hrep-sub{font-size:12px;color:var(--muted);margin-top:2px;}
 .hchev{font-size:18px;color:var(--muted);transition:transform .2s;flex-shrink:0;}
 .hchev.open{transform:rotate(90deg);}
-.hrep-body{display:none;border-top:1px solid var(--border);}
-.hrep-body.open{display:block;}
+.hrep-body{border-top:1px solid var(--border);}
 .hentry{padding:10px 13px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:8px;}
 .hentry-info{flex:1;min-width:0;}
 .hentry-id{font-family:'Share Tech Mono',monospace;font-size:15px;font-weight:700;color:var(--accent);}
@@ -206,6 +205,11 @@ input.cid{font-family:'Share Tech Mono',monospace;font-size:24px;letter-spacing:
       <div class="hdate" id="hdate"></div>
       <button class="huser" id="huser" onclick="doLogout()">ログアウト</button>
     </div>
+  </div>
+  <div id="histSearch" style="display:none;margin-top:10px;">
+    <input id="histQ" type="search" placeholder="🔍 入庫NOで検索..." oninput="renderHist()"
+      style="width:100%;padding:9px 14px;border-radius:9px;border:none;font-size:15px;font-family:'Noto Sans JP',sans-serif;background:rgba(255,255,255,.18);color:#fff;outline:none;-webkit-appearance:none;"
+      autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
   </div>
 </div>
 
@@ -315,7 +319,7 @@ function doLogin(){
     document.getElementById('lgBtn').style.pointerEvents='auto';
 
     if(USERS[email] && USERS[email]===pass){
-      localStorage.setItem('tj_user', email);
+      sessionStorage.setItem('tj_user', email);
       document.body.classList.add('logged-in');
       document.getElementById('huser').textContent = email.split('@')[0];
       initApp();
@@ -332,7 +336,7 @@ function showLgErr(msg){
 
 function doLogout(){
   if(!confirm('ログアウトしますか？'))return;
-  localStorage.removeItem('tj_user');
+  sessionStorage.removeItem('tj_user');
   document.body.classList.remove('logged-in');
   document.getElementById('lgEmail').value='';
   document.getElementById('lgPass').value='';
@@ -341,12 +345,7 @@ function doLogout(){
 
 // Auto-login if saved
 window.addEventListener('DOMContentLoaded',()=>{
-  const saved=localStorage.getItem('tj_user');
-  if(saved){
-    document.body.classList.add('logged-in');
-    document.getElementById('huser').textContent=saved.split('@')[0];
-    initApp();
-  }
+  // Always show login screen — data is preserved in localStorage
 });
 
 // ===== APP DATA =====
@@ -369,8 +368,9 @@ function goTo(name){
     document.getElementById('scr-'+n).classList.toggle('active',n===name);
     document.getElementById('nb-'+n).classList.toggle('active',n===name);
   });
+  document.getElementById('histSearch').style.display = name==='hist' ? 'block' : 'none';
   if(name==='day') renderDay();
-  if(name==='hist') renderHist();
+  if(name==='hist'){ document.getElementById('histQ').value=''; renderHist(); }
 }
 
 function addEntry(pre){
@@ -384,6 +384,7 @@ function addEntry(pre){
     <div class="eb">
       <div><div class="fl">入庫NO.</div>
         <input class="cid" type="text" id="${id}_no" placeholder="SX3-281" maxlength="9" value="${p.no||''}"
+          autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
           oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\\-]/g,'')">
       </div>
       <div class="sep">山積済</div>
@@ -480,8 +481,7 @@ function renderDay(){
   dayList.forEach((item,idx)=>{
     const e=item.entry,line=makeLine(e);
     const d=document.createElement('div');d.className='drow';
-    d.innerHTML=`<div class="drow-info"><div class="drow-id">${e.no}</div><div class="drow-line">${line||'（詳細なし）'}</div></div>
-      <div class="drow-acts"><button class="bedit" onclick="openEdit('day',${idx})">編集</button><button class="bdel" onclick="delDay(${idx})">削除</button></div>`;
+    d.innerHTML=`<div class="drow-info"><div class="drow-id">${e.no}</div><div class="drow-line">${line||'（詳細なし）'}</div></div>`;
     wrap.appendChild(d);
   });
 }
@@ -513,6 +513,7 @@ async function sendReport(){
     localStorage.setItem('tj_hist',JSON.stringify(history));
     dayList=[];persist();updBadge();
     document.getElementById('sendingOverlay').classList.remove('show');
+    document.getElementById('sendBtn').disabled=false;
     showToast('✓ 報告を送信しました');renderDay();
   }catch(err){
     document.getElementById('sendingOverlay').classList.remove('show');
@@ -521,24 +522,36 @@ async function sendReport(){
   }
 }
 
+// dirty = set of repIds that were edited and need resend
+const dirtyReps = new Set();
+
 function renderHist(){
   const wrap=document.getElementById('histItems');wrap.innerHTML='';
+  const q=(document.getElementById('histQ')?.value||'').toUpperCase().trim();
   if(!history.length){wrap.innerHTML=`<div class="empty"><div class="ei">📭</div><p>送信済みの報告はありません</p></div>`;return;}
   const groups={};
-  history.forEach(r=>{(groups[r.date]||(groups[r.date]=[])).push(r);});
+  history.forEach(r=>{
+    const entries = q ? r.entries.filter(e=>e.no&&e.no.toUpperCase().includes(q)) : r.entries;
+    if(!entries.length) return;
+    const rep = {...r, entries};
+    (groups[rep.date]||(groups[rep.date]=[])).push(rep);
+  });
+  if(!Object.keys(groups).length){wrap.innerHTML=`<div class="empty"><div class="ei">🔍</div><p>「${q}」は見つかりませんでした</p></div>`;return;}
   Object.keys(groups).forEach(date=>{
     const grp=document.createElement('div');grp.className='hgroup';
     const lbl=document.createElement('div');lbl.className='hgroup-lbl';lbl.textContent=`📅 ${date}`;grp.appendChild(lbl);
     groups[date].forEach(rep=>{
-      const ids=rep.entries.map(e=>e.no).join('、');
       const rdiv=document.createElement('div');rdiv.className='hrep';
-      rdiv.innerHTML=`<div class="hrep-head" onclick="toggleRep(this)">
-        <div><div class="hrep-title">${rep.name}　<span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);">${rep.entries.length}件</span></div>
-        <div class="hrep-sub">${ids}</div></div><span class="hchev">›</span></div>
-        <div class="hrep-body">
+      const isDirty=dirtyReps.has(rep.id);
+      rdiv.innerHTML=`
+        <div class="hrep-head">
+          <div><div class="hrep-title">${rep.name}　<span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);">${rep.entries.length}件</span></div>
+          <div class="hrep-sub">${rep.entries.map(e=>e.no).join('　')}</div></div>
+        </div>
+        <div class="hrep-body open">
           ${rep.entries.map((e,idx)=>`<div class="hentry"><div class="hentry-info"><div class="hentry-id">${e.no}</div><div class="hentry-line">${makeLine(e)||'（詳細なし）'}</div></div>
             <div class="hentry-acts"><button class="bedit" onclick="openEdit('hist',${idx},${rep.id})">編集</button><button class="bdel" onclick="delHistEntry(${rep.id},${idx})">削除</button></div></div>`).join('')}
-          <div class="hfooter"><button class="bresend" onclick="resendReport(${rep.id})">📤 再送信</button><button class="bdelrep" onclick="delReport(${rep.id})">報告を削除</button></div>
+          ${isDirty?`<div class="hfooter"><button class="bresend" onclick="resendReport(${rep.id})">📤 再送信</button></div>`:''}
         </div>`;
       grp.appendChild(rdiv);
     });
@@ -546,16 +559,16 @@ function renderHist(){
   });
 }
 
-function toggleRep(head){const body=head.nextElementSibling,chev=head.querySelector('.hchev');body.classList.toggle('open');chev.classList.toggle('open');}
-function delHistEntry(repId,idx){if(!confirm('この入庫を削除しますか？'))return;const r=history.find(h=>h.id===repId);if(!r)return;r.entries.splice(idx,1);if(!r.entries.length)history=history.filter(h=>h.id!==repId);localStorage.setItem('tj_hist',JSON.stringify(history));renderHist();}
-function delReport(repId){if(!confirm('この報告をすべて削除しますか？'))return;history=history.filter(h=>h.id!==repId);localStorage.setItem('tj_hist',JSON.stringify(history));renderHist();}
+function delHistEntry(repId,idx){if(!confirm('この入庫を削除しますか？'))return;const r=history.find(h=>h.id===repId);if(!r)return;r.entries.splice(idx,1);if(!r.entries.length){history=history.filter(h=>h.id!==repId);dirtyReps.delete(repId);}localStorage.setItem('tj_hist',JSON.stringify(history));renderHist();}
+function delReport(repId){if(!confirm('この報告をすべて削除しますか？'))return;history=history.filter(h=>h.id!==repId);dirtyReps.delete(repId);localStorage.setItem('tj_hist',JSON.stringify(history));renderHist();}
 
 async function resendReport(repId){
   const rep=history.find(h=>h.id===repId);if(!rep)return;
   document.getElementById('sendingOverlay').classList.add('show');
   try{
     await emailjs.send(EMAILJS_SERVICE_ID,EMAILJS_TEMPLATE_ID,{to_email:REPORT_TO_EMAIL,subject:`【再送】手仕舞い報告 ${rep.date} 担当：${rep.name}`,report_date:rep.date,staff_name:rep.name,send_time:rep.ts,entry_count:rep.entries.length+'件',report_body:buildText(rep)});
-    document.getElementById('sendingOverlay').classList.remove('show');showToast('✓ 再送信しました');
+    dirtyReps.delete(repId);
+    document.getElementById('sendingOverlay').classList.remove('show');showToast('✓ 再送信しました');renderHist();
   }catch(err){document.getElementById('sendingOverlay').classList.remove('show');showToast('⚠ 送信に失敗しました','#c0392b');}
 }
 
@@ -570,7 +583,7 @@ function openEdit(src,idx,repId){
 
 function buildModal(e){
   document.getElementById('mFields').innerHTML=`
-    <div><div class="fl">入庫NO.</div><input class="cid" type="text" id="m_no" value="${e.no||''}" maxlength="9" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\\-]/g,'')"></div>
+    <div><div class="fl">入庫NO.</div><input class="cid" type="text" id="m_no" value="${e.no||''}" maxlength="9" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\\-]/g,'')"></div>
     <div class="sep">山積済</div><div class="crow"><input type="number" id="m_ya" value="${e.yama||''}" placeholder="0" min="0" style="text-align:center;max-width:160px;"><span class="unit">山</span></div>
     <div class="sep">良品</div><div class="cg"><div><div class="fl">個数</div><div class="crow"><input type="number" id="m_rk" value="${e.ryohin?.ko||''}" placeholder="0" min="0" style="text-align:center;"><span class="unit">個</span></div></div><div><div class="fl">枚数</div><div class="crow"><input type="number" id="m_rm" value="${e.ryohin?.mai||''}" placeholder="0" min="0" style="text-align:center;"><span class="unit">枚</span></div></div></div>
     <div class="sep">ダメージ</div><div class="cg"><div><div class="fl">個数</div><div class="crow"><input type="number" id="m_dk" value="${e.damage?.ko||''}" placeholder="0" min="0" style="text-align:center;"><span class="unit">個</span></div></div><div><div class="fl">枚数</div><div class="crow"><input type="number" id="m_dm" value="${e.damage?.mai||''}" placeholder="0" min="0" style="text-align:center;"><span class="unit">枚</span></div></div></div>
@@ -593,7 +606,7 @@ function saveModal(){
   const updated={no:mv('m_no'),yama:mv('m_ya'),ryohin:{ko:mv('m_rk'),mai:mv('m_rm')},damage:{ko:mv('m_dk'),mai:mv('m_dm')},shimi:{ko:mv('m_sk'),mai:mv('m_sm')},senbetsu:{ko:mv('m_sbk'),mai:mv('m_sbm')},fusoku:mv('m_fu'),biko:{size:mv('m_bs'),t:mv('m_bt'),g:mv('m_bg'),f:mv('m_bf'),memo:mv('m_bm')}};
   if(!updated.no){showToast('⚠ 入庫NOを入力してください','#c0392b');return;}
   if(editTarget.src==='day'){dayList[editTarget.idx].entry=updated;persist();renderDay();}
-  else{const r=history.find(h=>h.id===editTarget.repId);if(r)r.entries[editTarget.idx]=updated;localStorage.setItem('tj_hist',JSON.stringify(history));renderHist();}
+  else{const r=history.find(h=>h.id===editTarget.repId);if(r){r.entries[editTarget.idx]=updated;dirtyReps.add(editTarget.repId);}localStorage.setItem('tj_hist',JSON.stringify(history));renderHist();}
   closeModal();showToast('✓ 保存しました');
 }
 
