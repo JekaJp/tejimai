@@ -209,7 +209,7 @@ input.cid{font-family:'Share Tech Mono',monospace;font-size:24px;letter-spacing:
   <div id="histSearch" style="display:none;margin-top:10px;">
     <input id="histQ" type="search" placeholder="🔍 入庫NOで検索..." oninput="renderHist()"
       style="width:100%;padding:9px 14px;border-radius:9px;border:none;font-size:15px;font-family:'Noto Sans JP',sans-serif;background:rgba(255,255,255,.18);color:#fff;outline:none;-webkit-appearance:none;"
-      autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+      autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
   </div>
 </div>
 
@@ -397,8 +397,11 @@ function addEntry(pre){
     <div class="eb">
       <div><div class="fl">入庫NO.</div>
         <input class="cid" type="text" id="${id}_no" placeholder="SX3-281" maxlength="9" value="${p.no||''}"
-          autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
-          oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\\-]/g,'')">
+          autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+          autocomplete="new-password" data-form-type="other"
+          oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\\-]/g,'')"
+          onpaste="setTimeout(()=>this.value=this.value.toUpperCase().replace(/[^A-Z0-9\\-]/g,''),0)"
+          onkeydown="if(event.key===' ')event.preventDefault()">
       </div>
       <div class="sep">山積済</div>
       <div class="crow"><input type="number" id="${id}_ya" placeholder="0" min="0" value="${p.yama||''}" style="text-align:center;max-width:160px;"><span class="unit">山</span></div>
@@ -488,6 +491,7 @@ function renderDay(){
   const wrap=document.getElementById('dayItems');wrap.innerHTML='';
   document.getElementById('dayCnt').textContent=dayList.length;
   document.getElementById('sendWrap').style.display=dayList.length?'block':'none';
+  document.getElementById('sendBtn').disabled=false;
   if(dayList.length){const d=dayList[0];document.getElementById('dayLabel').textContent=`${d.month}月${d.day}日　${d.name}`;}
   else document.getElementById('dayLabel').textContent='本日のリスト';
   if(!dayList.length){wrap.innerHTML=`<div class="empty"><div class="ei">📋</div><p>まだ入庫がありません<br>入力画面から追加してください</p></div>`;return;}
@@ -594,7 +598,7 @@ function openEdit(src,idx,repId){
 
 function buildModal(e){
   document.getElementById('mFields').innerHTML=`
-    <div><div class="fl">入庫NO.</div><input class="cid" type="text" id="m_no" value="${e.no||''}" maxlength="9" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\\-]/g,'')"></div>
+    <div><div class="fl">入庫NO.</div><input class="cid" type="text" id="m_no" value="${e.no||''}" maxlength="9" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" data-form-type="other" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\\-]/g,'')" onkeydown="if(event.key===' ')event.preventDefault()"></div>
     <div class="sep">山積済</div><div class="crow"><input type="number" id="m_ya" value="${e.yama||''}" placeholder="0" min="0" style="text-align:center;max-width:160px;"><span class="unit">山</span></div>
     <div class="sep">良品</div><div class="cg"><div><div class="fl">個数</div><div class="crow"><input type="number" id="m_rk" value="${e.ryohin?.ko||''}" placeholder="0" min="0" style="text-align:center;"><span class="unit">個</span></div></div><div><div class="fl">枚数</div><div class="crow"><input type="number" id="m_rm" value="${e.ryohin?.mai||''}" placeholder="0" min="0" style="text-align:center;"><span class="unit">枚</span></div></div></div>
     <div class="sep">ダメージ</div><div class="cg"><div><div class="fl">個数</div><div class="crow"><input type="number" id="m_dk" value="${e.damage?.ko||''}" placeholder="0" min="0" style="text-align:center;"><span class="unit">個</span></div></div><div><div class="fl">枚数</div><div class="crow"><input type="number" id="m_dm" value="${e.damage?.mai||''}" placeholder="0" min="0" style="text-align:center;"><span class="unit">枚</span></div></div></div>
