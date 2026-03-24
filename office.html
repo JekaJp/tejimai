@@ -388,21 +388,27 @@ function openStack(key, date, name, stack){
   const rowEl=document.getElementById('stack-'+key.replace(/[^a-zA-Z0-9]/g,'_'));
   if(rowEl) rowEl.classList.add('active');
 
-  // Show all reports oldest→newest on right panel
-  const allEntries=stack.flatMap(r=>r.entries.map(e=>({...e,is_revision:r.is_revision||e.is_revision||false})));
+  // Show all reports oldest→newest on right panel, group by revision
+  const normalReports=stack.filter(r=>!r.is_revision);
+  const revReports=stack.filter(r=>r.is_revision);
+  const normalEntries=normalReports.flatMap(r=>r.entries);
+  const revEntries=revReports.flatMap(r=>r.entries.map(e=>({...e,is_revision:true})));
+  const allEntries=[...normalEntries,...revEntries.map(e=>({...e,is_revision:true}))];
   const firstTime=stack[0].time;
   const lastTime=stack[stack.length-1].time;
   const timeStr=stack.length>1?`${firstTime} 〜 ${lastTime}`:firstTime;
+  const revSection=revEntries.length?`<div style="margin-top:10px;border-radius:8px;overflow:hidden;border:2px solid #e74c3c;"><div style="background:#e74c3c;color:#fff;font-weight:700;font-size:13px;padding:6px 14px;letter-spacing:.05em;">修正報告</div><div class="entries-wrap" style="border:none;">${revEntries.map(e=>buildLine(e)).join('')}</div></div>`:'';
 
   document.getElementById('rightPanel').innerHTML=`
     <div class="dheader">
       <div>
         <div class="dtitle">${name}<span style="font-size:15px;color:var(--muted);font-weight:500;font-family:'Share Tech Mono',monospace;margin-left:10px;">${date}</span></div>
-        <div class="dmeta">受信時刻：${timeStr}　／　全${allEntries.length}件　（${stack.length}回送信）</div>
+        <div class="dmeta">受信時刻：${timeStr}　／　全${normalEntries.length}件　（${stack.length}回送信）</div>
       </div>
       <button class="btn-print" onclick="window.print()">🖨 印刷</button>
     </div>
-    <div class="entries-wrap">${allEntries.map(e=>buildLine(e)).join('')}</div>`;
+    <div class="entries-wrap">${normalEntries.map(e=>buildLine(e)).join('')}</div>
+    ${revSection}`;
 }
 
 function exportExcel(){
