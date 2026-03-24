@@ -540,7 +540,9 @@ async function sendReport(){
 }
 
 // dirty = set of repIds that were edited and need resend
-const dirtyReps = new Set();
+// Persist across page reloads
+const dirtyReps = new Set(JSON.parse(localStorage.getItem('tj_dirty')||'[]'));
+function saveDirty(){localStorage.setItem('tj_dirty',JSON.stringify([...dirtyReps]));}
 
 function renderHist(){
   const wrap=document.getElementById('histItems');wrap.innerHTML='';
@@ -582,7 +584,7 @@ async function resendReport(repId){
     const revText='【修正報告】\n'+buildText(rep);
     await emailjs.send(EMAILJS_SERVICE_ID,EMAILJS_TEMPLATE_ID,{to_email:REPORT_TO_EMAIL,subject:'【修正報告】手仕舞い報告 '+rep.date+' 担当：'+rep.name,report_date:rep.date,staff_name:rep.name,send_time:rep.ts,entry_count:rep.entries.length+'件',report_body:revText});
     await sbSaveRevision(rep);
-    dirtyReps.delete(repId);
+    dirtyReps.delete(repId);saveDirty();
     document.getElementById('sendingOverlay').classList.remove('show');showToast('✓ 修正報告を送信しました');renderHist();
   }catch(err){document.getElementById('sendingOverlay').classList.remove('show');showToast('⚠ 送信に失敗しました','#c0392b');}
 }
@@ -621,7 +623,7 @@ function saveModal(){
   const updated={no:mv('m_no'),yama:mv('m_ya'),ryohin:{ko:mv('m_rk'),mai:mv('m_rm')},damage:{ko:mv('m_dk'),mai:mv('m_dm')},shimi:{ko:mv('m_sk'),mai:mv('m_sm')},senbetsu:{ko:mv('m_sbk'),mai:mv('m_sbm')},fusoku:mv('m_fu'),biko:{size:mv('m_bs'),t:mv('m_bt'),g:mv('m_bg'),f:mv('m_bf'),memo:mv('m_bm')}};
   if(!updated.no){showToast('⚠ 入庫NOを入力してください','#c0392b');return;}
   if(editTarget.src==='day'){dayList[editTarget.idx].entry=updated;persist();renderDay();}
-  else{const r=history.find(h=>h.id===editTarget.repId);if(r){r.entries[editTarget.idx]=updated;dirtyReps.add(editTarget.repId);}localStorage.setItem('tj_hist',JSON.stringify(history));renderHist();}
+  else{const r=history.find(h=>h.id===editTarget.repId);if(r){r.entries[editTarget.idx]=updated;dirtyReps.add(editTarget.repId);saveDirty();}localStorage.setItem('tj_hist',JSON.stringify(history));renderHist();}
   closeModal();showToast('✓ 保存しました');
 }
 
